@@ -1,14 +1,4 @@
 fn main() {
-    #[cfg(debug_assertions)]
-    {
-        capnpc::CompilerCommand::new()
-            .src_prefix("capnp")
-            .file("capnp/plugin.capnp")
-            .output_path("capnp")
-            .run()
-            .expect("schema compiler command");
-    }
-
     #[cfg(target_os = "windows")]
     {
         let mut res = winresource::WindowsResource::new();

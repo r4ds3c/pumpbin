@@ -1,34 +1,40 @@
 [package]
-name = "pumpbin"
-version = "1.1.1"
+name = "hostsight"
+version = "0.1.0"
 authors = ["b1n <b1n@b1n.io>"]
 edition = "2021"
-description = "PumpBin is an Implant Generation Platform."
-documentation = "https://pumpbin.b1n.io"
+description = "HostSight is a host-centric Network Forensic Analysis Tool (NFAT)."
+documentation = "https://github.com/pumpbin/pumpbin"
 readme = "README.md"
-homepage = "https://b1n.io"
+homepage = "https://github.com/pumpbin/pumpbin"
 repository = "https://github.com/pumpbin/pumpbin"
 license = "MIT"
 build = "build.rs"
-default-run = "pumpbin"
+default-run = "hostsight"
 
 [[bin]]
-name = "maker"
-path = "src/bin/maker.rs"
+name = "hostsight"
+path = "src/main.rs"
+
+[[bin]]
+name = "hostsight-cli"
+path = "src/bin/hostsight_cli.rs"
 
 [dependencies]
-rfd = { version = "0.14.1", default-features = false , features = ["gtk3"]}
-dirs = "5.0.1"
-open = "5.1.4"
-bincode = { version = "2.0.0-rc.3", default-features = false , features = ["alloc", "derive", "std"]}
 anyhow = "1.0.86"
-rand = "0.8.5"
-memchr = "2.7.4"
-capnp = "0.19"
-extism = "1.4.1"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+dirs = "5.0.1"
+etherparse = "0.16"
+md-5 = "0.10"
+open = "5.1.4"
+pcap-file = "2.0.0"
+rfd = { version = "0.14.1", default-features = false, features = ["gtk3"] }
 serde = { version = "1.0.203", features = ["derive"] }
 serde_json = "1.0.120"
-flate2 = "1.0.30"
+sha2 = "0.10"
+thiserror = "1.0"
+x509-parser = "0.16"
 
 [dependencies.iced]
 version = "0.13.0-dev"
@@ -38,16 +44,13 @@ default-features = false
 features = ["wgpu", "tiny-skia", "advanced", "svg", "tokio", "image"]
 
 [package.metadata.winresource]
-LegalCopyright = "Copyright (c) 2024 b1n <b1n@b1n.io>"
+LegalCopyright = "Copyright (c) 2024-2026 HostSight contributors"
 
 [target."cfg(windows)".build-dependencies]
 winresource = "0.1.17"
 
 [dev-dependencies]
 tempfile = "3.10.1"
-
-[build-dependencies]
-capnpc = "0.19"
 
 [profile.release]
 strip = true
