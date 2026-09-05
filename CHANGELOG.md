@@ -25,3 +25,10 @@
 - SMB2 READ file extract; IRC / OSCAR / IEC-104 / njRAT message hints
 - Custom timezone offsets (UTC / Local / ±offsets cycle)
 - Carver: tighter IPv4/IPv6 heuristics to avoid dump false positives
+
+### UI — Pro layout + live sniff
+- Host inventory list + detail pane (OS/Geo/ports/TLS/sessions/files)
+- Column headers across Files/DNS/Sessions/Messages/etc.
+- Status bar with artifact counts + source path
+- Live capture bar: refresh interfaces, select/next iface, Start/Stop, packet & batch counters
+- `ingest_frames` + case merge for continuous live batches

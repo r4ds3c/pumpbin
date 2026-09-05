@@ -41,6 +41,64 @@ impl Case {
     pub fn ensure_host(&mut self, ip: IpAddr) -> &mut Host {
         self.hosts.entry(ip).or_insert_with(|| Host::new(ip))
     }
+
+    /// Merge another case (e.g. a live sniff batch) into this one.
+    pub fn merge_from(&mut self, other: Case) {
+        for (ip, h) in other.hosts {
+            let dest = self.ensure_host(ip);
+            if dest.mac.is_none() {
+                dest.mac = h.mac;
+            }
+            if dest.oui_vendor.is_none() {
+                dest.oui_vendor = h.oui_vendor;
+            }
+            if dest.os_guess.is_none() {
+                dest.os_guess = h.os_guess;
+            }
+            if dest.country.is_none() {
+                dest.country = h.country;
+            }
+            if dest.asn.is_none() {
+                dest.asn = h.asn;
+            }
+            if dest.color.is_none() {
+                dest.color = h.color;
+            }
+            dest.bytes_sent = dest.bytes_sent.saturating_add(h.bytes_sent);
+            dest.bytes_recv = dest.bytes_recv.saturating_add(h.bytes_recv);
+            for name in h.hostnames {
+                if !dest.hostnames.contains(&name) {
+                    dest.hostnames.push(name);
+                }
+            }
+            for ua in h.user_agents {
+                if !dest.user_agents.contains(&ua) {
+                    dest.user_agents.push(ua);
+                }
+            }
+            for port in h.open_ports {
+                if !dest.open_ports.contains(&port) {
+                    dest.open_ports.push(port);
+                }
+            }
+            dest.open_ports.sort_unstable();
+        }
+        self.sessions.extend(other.sessions);
+        self.dns_records.extend(other.dns_records);
+        self.files.extend(other.files);
+        self.credentials.extend(other.credentials);
+        self.parameters.extend(other.parameters);
+        self.keywords.extend(other.keywords);
+        self.anomalies.extend(other.anomalies);
+        self.messages.extend(other.messages);
+        self.images.extend(other.images);
+        self.voip_calls.extend(other.voip_calls);
+        self.tls_handshakes.extend(other.tls_handshakes);
+        self.browser_traces.extend(other.browser_traces);
+        if self.source_path.is_none() {
+            self.source_path = other.source_path;
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

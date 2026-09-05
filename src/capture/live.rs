@@ -8,6 +8,16 @@ pub struct CaptureDevice {
     pub description: String,
 }
 
+impl CaptureDevice {
+    pub fn label(&self) -> String {
+        if self.description.is_empty() {
+            self.name.clone()
+        } else {
+            format!("{} — {}", self.name, self.description)
+        }
+    }
+}
+
 /// List capture interfaces when the `live-capture` feature is enabled.
 pub fn list_devices() -> Result<Vec<CaptureDevice>> {
     #[cfg(feature = "live-capture")]
@@ -22,16 +32,20 @@ pub fn list_devices() -> Result<Vec<CaptureDevice>> {
     }
 }
 
-/// Capture up to `max_packets` (or until error) from `device` into a PCAP file path is not used —
-/// packets are returned as Ethernet frames for ingest. Prefer CLI `sniff` for batch capture-to-case.
-pub fn sniff_frames(device: &str, max_packets: usize, timeout_ms: i32) -> Result<Vec<Vec<u8>>> {
+/// Capture up to `max_packets` from `device`, waiting at most `max_wait_ms`.
+pub fn sniff_frames(
+    device: &str,
+    max_packets: usize,
+    timeout_ms: i32,
+    max_wait_ms: i32,
+) -> Result<Vec<Vec<u8>>> {
     #[cfg(feature = "live-capture")]
     {
-        live_impl::sniff_frames(device, max_packets, timeout_ms)
+        live_impl::sniff_frames(device, max_packets, timeout_ms, max_wait_ms)
     }
     #[cfg(not(feature = "live-capture"))]
     {
-        let _ = (device, max_packets, timeout_ms);
+        let _ = (device, max_packets, timeout_ms, max_wait_ms);
         bail!(
             "Live capture requires building with `--features live-capture` and Npcap/libpcap installed"
         )
@@ -40,6 +54,8 @@ pub fn sniff_frames(device: &str, max_packets: usize, timeout_ms: i32) -> Result
 
 #[cfg(feature = "live-capture")]
 mod live_impl {
+    use std::time::{Duration, Instant};
+
     use anyhow::{anyhow, Context, Result};
     use pcap::{Capture, Device};
 
@@ -56,7 +72,12 @@ mod live_impl {
             .collect())
     }
 
-    pub fn sniff_frames(device: &str, max_packets: usize, timeout_ms: i32) -> Result<Vec<Vec<u8>>> {
+    pub fn sniff_frames(
+        device: &str,
+        max_packets: usize,
+        timeout_ms: i32,
+        max_wait_ms: i32,
+    ) -> Result<Vec<Vec<u8>>> {
         let dev = Device::list()
             .context("list devices")?
             .into_iter()
@@ -69,7 +90,8 @@ mod live_impl {
             .open()
             .context("start capture")?;
         let mut out = Vec::new();
-        for _ in 0..max_packets {
+        let deadline = Instant::now() + Duration::from_millis(max_wait_ms.max(timeout_ms) as u64);
+        while out.len() < max_packets && Instant::now() < deadline {
             match cap.next_packet() {
                 Ok(pkt) => out.push(pkt.data.to_vec()),
                 Err(pcap::Error::TimeoutExpired) => continue,

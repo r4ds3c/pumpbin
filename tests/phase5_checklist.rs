@@ -245,3 +245,23 @@ fn timezone_custom_cycles() {
     assert!(matches!(t, TimezoneMode::Custom(1)));
     assert!(t.label().contains("+1"));
 }
+
+#[test]
+fn ingest_frames_and_merge() {
+    let dir = tempdir().unwrap();
+    let out = dir.path().join("out");
+    std::fs::create_dir_all(&out).unwrap();
+    let frame = eth_tcp(
+        Ipv4Addr::new(192, 0, 2, 1),
+        Ipv4Addr::new(192, 0, 2, 2),
+        1234,
+        80,
+        b"GET /ui HTTP/1.0\r\nHost: example.test\r\n\r\n",
+    );
+    let batch = capture::ingest_frames(&[frame], 0, &out, &IngestOptions::default()).unwrap();
+    assert!(!batch.hosts.is_empty() || !batch.sessions.is_empty());
+    let mut case = hostsight::case::Case::default();
+    case.merge_from(batch);
+    assert!(!case.hosts.is_empty() || !case.sessions.is_empty());
+}
+

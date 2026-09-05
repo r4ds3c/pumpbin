@@ -52,6 +52,13 @@ pub enum Message {
     ExportAllClicked,
     OsintFile(usize),
     OsintDns(usize),
+    SelectHost(IpAddr),
+    LiveRefreshDevices,
+    LiveDevicesDone(Result<Vec<capture::live::CaptureDevice>, String>),
+    LiveSelectDevice(usize),
+    LiveStart,
+    LiveStop,
+    LiveBatchDone(Result<(Case, usize), String>),
     NoOp,
 }
 
@@ -106,6 +113,7 @@ impl TimezoneMode {
 pub struct HostSight {
     pub case: Case,
     pub selected_tab: Tab,
+    pub selected_host: Option<IpAddr>,
     pub keyword_draft: String,
     pub last_capture_path: Option<PathBuf>,
     pub output_dir: PathBuf,
@@ -115,6 +123,11 @@ pub struct HostSight {
     pub status: String,
     pub busy: bool,
     pub selected_theme: Theme,
+    pub live_devices: Vec<capture::live::CaptureDevice>,
+    pub live_device_idx: Option<usize>,
+    pub live_running: bool,
+    pub live_packets: u64,
+    pub live_batches: u64,
 }
 
 impl Default for HostSight {
@@ -125,15 +138,21 @@ impl Default for HostSight {
         Self {
             case: Case::default(),
             selected_tab: Tab::Hosts,
+            selected_host: None,
             keyword_draft: String::new(),
             last_capture_path: None,
             output_dir,
             defang_executables: true,
             timezone: TimezoneMode::Utc,
             cidr_filter: String::new(),
-            status: "Open a PCAP/PcapNG to begin.".into(),
+            status: "Open a capture or start live sniff.".into(),
             busy: false,
             selected_theme: Theme::CatppuccinMacchiato,
+            live_devices: Vec::new(),
+            live_device_idx: None,
+            live_running: false,
+            live_packets: 0,
+            live_batches: 0,
         }
     }
 }
@@ -190,6 +209,13 @@ impl HostSight {
                 self.busy = false;
                 let summary = case.summary();
                 self.case = case;
+                if let Some(ip) = self.selected_host {
+                    if !self.case.hosts.contains_key(&ip) {
+                        self.selected_host = self.case.hosts.keys().next().copied();
+                    }
+                } else {
+                    self.selected_host = self.case.hosts.keys().next().copied();
+                }
                 self.status = summary;
                 Task::none()
             }
@@ -199,8 +225,15 @@ impl HostSight {
                 message_dialog(err, MessageLevel::Error).map(|_| Message::NoOp)
             }
             Message::ClearCase => {
+                if self.live_running {
+                    self.status = "Stop live capture before clearing.".into();
+                    return Task::none();
+                }
                 self.case = Case::default();
+                self.selected_host = None;
                 self.last_capture_path = None;
+                self.live_packets = 0;
+                self.live_batches = 0;
                 self.status = "Case cleared.".into();
                 Task::none()
             }
@@ -380,8 +413,133 @@ impl HostSight {
                 }
                 Task::none()
             }
+            Message::SelectHost(ip) => {
+                self.selected_host = Some(ip);
+                self.selected_tab = Tab::Hosts;
+                Task::none()
+            }
+            Message::LiveRefreshDevices => {
+                Task::perform(
+                    async {
+                        std::thread::spawn(|| {
+                            capture::live::list_devices().map_err(|e| e.to_string())
+                        })
+                        .join()
+                        .unwrap_or_else(|_| Err("device list thread panicked".into()))
+                    },
+                    Message::LiveDevicesDone,
+                )
+            }
+            Message::LiveDevicesDone(Ok(devs)) => {
+                self.live_devices = devs;
+                if self.live_devices.is_empty() {
+                    self.live_device_idx = None;
+                    self.status = "No capture devices found.".into();
+                } else {
+                    if self
+                        .live_device_idx
+                        .map(|i| i >= self.live_devices.len())
+                        .unwrap_or(true)
+                    {
+                        self.live_device_idx = Some(0);
+                    }
+                    self.status = format!("{} capture device(s) ready.", self.live_devices.len());
+                }
+                Task::none()
+            }
+            Message::LiveDevicesDone(Err(err)) => {
+                self.live_devices.clear();
+                self.live_device_idx = None;
+                self.status = err;
+                Task::none()
+            }
+            Message::LiveSelectDevice(idx) => {
+                if idx < self.live_devices.len() {
+                    self.live_device_idx = Some(idx);
+                }
+                Task::none()
+            }
+            Message::LiveStart => {
+                if self.live_running || self.busy {
+                    return Task::none();
+                }
+                let Some(idx) = self.live_device_idx else {
+                    self.status = "Refresh devices and select an interface first.".into();
+                    return Task::none();
+                };
+                let Some(dev) = self.live_devices.get(idx).cloned() else {
+                    self.status = "Invalid capture device.".into();
+                    return Task::none();
+                };
+                self.live_running = true;
+                self.status = format!("Live sniffing on {}…", dev.label());
+                self.schedule_live_batch(dev.name)
+            }
+            Message::LiveStop => {
+                self.live_running = false;
+                self.status = format!(
+                    "Live stopped. {} packets in {} batches. {}",
+                    self.live_packets,
+                    self.live_batches,
+                    self.case.summary()
+                );
+                Task::none()
+            }
+            Message::LiveBatchDone(Ok((batch, n))) => {
+                self.live_packets = self.live_packets.saturating_add(n as u64);
+                if n > 0 {
+                    self.live_batches = self.live_batches.saturating_add(1);
+                    self.case.merge_from(batch);
+                    if self.selected_host.is_none() {
+                        self.selected_host = self.case.hosts.keys().next().copied();
+                    }
+                }
+                self.status = format!(
+                    "Live: {} pkts | {}",
+                    self.live_packets,
+                    self.case.summary()
+                );
+                if self.live_running {
+                    if let Some(idx) = self.live_device_idx {
+                        if let Some(dev) = self.live_devices.get(idx).cloned() {
+                            return self.schedule_live_batch(dev.name);
+                        }
+                    }
+                    self.live_running = false;
+                }
+                Task::none()
+            }
+            Message::LiveBatchDone(Err(err)) => {
+                self.live_running = false;
+                self.status = format!("Live capture error: {err}");
+                message_dialog(err, MessageLevel::Error).map(|_| Message::NoOp)
+            }
             Message::NoOp => Task::none(),
         }
+    }
+
+    fn schedule_live_batch(&self, device: String) -> Task<Message> {
+        let output_dir = self.output_dir.clone();
+        let opts = self.ingest_opts();
+        let frame_offset = self.live_packets;
+        Task::perform(
+            async move {
+                std::thread::spawn(move || {
+                    let frames =
+                        capture::live::sniff_frames(&device, 48, 250, 750).map_err(|e| e.to_string())?;
+                    let n = frames.len();
+                    if n == 0 {
+                        return Ok((Case::default(), 0));
+                    }
+                    let case = capture::ingest_frames(&frames, frame_offset, &output_dir, &opts)
+                        .map_err(|e| e.to_string())?;
+                    Ok((case, n))
+                })
+                .join()
+                .unwrap_or_else(|_| Err("live batch thread panicked".into()))
+            },
+            Message::LiveBatchDone,
+        )
     }
 
     pub fn view(&self) -> Element<'_, Message> {

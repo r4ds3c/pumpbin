@@ -39,8 +39,8 @@ pub fn settings() -> Settings {
 }
 
 pub fn window_settings() -> window::Settings {
-    let size = Size::new(1200.0, 720.0);
-    let min_size = Size::new(900.0, 560.0);
+    let size = Size::new(1440.0, 860.0);
+    let min_size = Size::new(1024.0, 640.0);
 
     window::Settings {
         size,

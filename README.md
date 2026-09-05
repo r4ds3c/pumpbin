@@ -8,16 +8,20 @@ HostSight aims for feature parity with capabilities publicly documented for [Net
 
 ## Features (current)
 
-Phases 0–5 (NetworkMiner Pro–class core + checklist stretch):
+Phases 0–5 + Pro layout:
 
-- Captures: PCAP, PcapNG, ETL (carve), carver, Pcap-over-IP, PacketCache `HSPC`; optional live (`--features live-capture`)
+- Captures: PCAP, PcapNG, ETL (carve), carver, Pcap-over-IP, PacketCache `HSPC`; **live sniff UI** (`--features live-capture` + Npcap/libpcap)
 - Tunnels: VLAN, GRE/ERSPAN, VXLAN, PPPoE, MPLS, OpenFlow, SOCKS5
 - Extractors: HTTP/2, FTP, TFTP, mail, SMB2 READ, LPR, TLS metadata, VoIP G.711; IRC/OSCAR/IEC-104/njRAT hints
 - Intelligence: offline GeoIP/ASN, DNS whitelist, trackers, PIPI, decode-as, OS guess, browser trail
-- UI: host colors, CIDR filter, OSINT buttons, Export all, VoIP Play; TZ UTC/Local/custom
+- UI: host inventory + detail pane, column headers, live iface picker / start-stop / packet counter, status bar counts, OSINT, Export, VoIP Play; TZ UTC/Local/custom
 - Exports: CSV, Excel-CSV, XML, CASE, JSON-LD (`hostsight-cli parse … --export-dir DIR`)
 
-Remaining gaps vs the full Pro checklist (deeper ETW, GTP/CAPWAP, richer live UI, etc.) are still incremental.
+```bash
+cargo run --bin hostsight --features live-capture
+```
+
+Remaining gaps vs the full Pro checklist (deeper ETW, GTP/CAPWAP, image thumbnails, etc.) are still incremental.
 
 See `PROMPTS/networkminer-professional-pivot.md` for the full checklist.
 

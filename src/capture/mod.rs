@@ -128,6 +128,38 @@ pub(crate) fn finalize_ingest(
     finish_case(case, opts, state)
 }
 
+/// Ingest raw Ethernet (or IP) frames — used by live sniff batches and carver paths.
+pub fn ingest_frames(
+    frames: &[Vec<u8>],
+    frame_offset: u64,
+    output_dir: &Path,
+    opts: &IngestOptions,
+) -> Result<Case> {
+    let mut case = Case::default();
+    std::fs::create_dir_all(output_dir)
+        .with_context(|| format!("create output dir {}", output_dir.display()))?;
+    let mut tracker = SessionTracker::new();
+    let mut state = DecodeState::new();
+    let keywords = parse_keywords_pub(&opts.keywords);
+    for (i, frame) in frames.iter().enumerate() {
+        decode::process_frame(
+            &mut case,
+            &mut tracker,
+            &mut state,
+            output_dir,
+            opts.defang_executables,
+            &keywords,
+            frame_offset + i as u64 + 1,
+            0.0,
+            frame,
+        )?;
+    }
+    case.sessions = tracker.into_sessions();
+    decode::finalize(&mut case, &mut state, output_dir)?;
+    finish_case(&mut case, opts, &state)?;
+    Ok(case)
+}
+
 pub fn parse_keywords_pub(raw: &str) -> Vec<KeywordPattern> {
     raw.lines()
         .map(str::trim)
