@@ -28,7 +28,7 @@ pub fn ingest_connect(
     )
     .with_context(|| format!("connect {addr}"))?;
     stream.set_read_timeout(Some(Duration::from_secs(30)))?;
-    ingest_stream(&mut stream, output_dir, opts, max_packets)
+    ingest_reader(&mut stream, output_dir, opts, max_packets)
 }
 
 /// Listen once, accept one client, ingest PCAP stream.
@@ -43,10 +43,11 @@ pub fn ingest_listen(
     let (mut stream, peer) = listener.accept().context("accept")?;
     let _ = peer;
     stream.set_read_timeout(Some(Duration::from_secs(60)))?;
-    ingest_stream(&mut stream, output_dir, opts, max_packets)
+    ingest_reader(&mut stream, output_dir, opts, max_packets)
 }
 
-fn ingest_stream<R: Read>(
+/// Ingest classic PCAP records from any `Read` stream.
+pub fn ingest_reader<R: Read>(
     reader: &mut R,
     output_dir: &Path,
     opts: &IngestOptions,

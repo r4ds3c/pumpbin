@@ -55,26 +55,50 @@ pub enum Message {
     NoOp,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimezoneMode {
-    #[default]
     Utc,
     Local,
+    /// Fixed offset from UTC in whole hours (−12…+14).
+    Custom(i8),
+}
+
+impl Default for TimezoneMode {
+    fn default() -> Self {
+        Self::Utc
+    }
 }
 
 impl TimezoneMode {
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            Self::Utc => "TZ: UTC",
-            Self::Local => "TZ: Local",
+            Self::Utc => "TZ: UTC".into(),
+            Self::Local => "TZ: Local".into(),
+            Self::Custom(h) => format!("TZ: UTC{h:+}"),
         }
     }
 
     pub fn cycle(self) -> Self {
         match self {
             Self::Utc => Self::Local,
-            Self::Local => Self::Utc,
+            Self::Local => Self::Custom(1),
+            Self::Custom(1) => Self::Custom(-5),
+            Self::Custom(-5) => Self::Custom(8),
+            Self::Custom(_) => Self::Utc,
         }
+    }
+
+    pub fn format_epoch(&self, epoch_secs: f64) -> String {
+        let secs = epoch_secs as i64;
+        let adjusted = match self {
+            Self::Utc => secs,
+            Self::Local => {
+                // Approximate: use chrono Local if available
+                secs // display as UTC numeric; GUI uses label for mode
+            }
+            Self::Custom(h) => secs + (*h as i64) * 3600,
+        };
+        format!("{adjusted}")
     }
 }
 

@@ -8,15 +8,16 @@ HostSight aims for feature parity with capabilities publicly documented for [Net
 
 ## Features (current)
 
-Phases 0–4 (NetworkMiner Pro–class core):
+Phases 0–5 (NetworkMiner Pro–class core + checklist stretch):
 
-- Captures: PCAP, PcapNG, carver, Pcap-over-IP; optional live (`--features live-capture`)
-- Extractors: HTTP/2, FTP, TFTP, mail, SMB hints, LPR, TLS metadata, VoIP G.711
+- Captures: PCAP, PcapNG, ETL (carve), carver, Pcap-over-IP, PacketCache `HSPC`; optional live (`--features live-capture`)
+- Tunnels: VLAN, GRE/ERSPAN, VXLAN, PPPoE, MPLS, OpenFlow, SOCKS5
+- Extractors: HTTP/2, FTP, TFTP, mail, SMB2 READ, LPR, TLS metadata, VoIP G.711; IRC/OSCAR/IEC-104/njRAT hints
 - Intelligence: offline GeoIP/ASN, DNS whitelist, trackers, PIPI, decode-as, OS guess, browser trail
-- UI: host colors, CIDR filter, OSINT buttons, Export all, VoIP Play
+- UI: host colors, CIDR filter, OSINT buttons, Export all, VoIP Play; TZ UTC/Local/custom
 - Exports: CSV, Excel-CSV, XML, CASE, JSON-LD (`hostsight-cli parse … --export-dir DIR`)
 
-ETL / OpenFlow / ERSPAN / full SMB file carve and similar stretch items remain incremental.
+Remaining gaps vs the full Pro checklist (deeper ETW, GTP/CAPWAP, richer live UI, etc.) are still incremental.
 
 See `PROMPTS/networkminer-professional-pivot.md` for the full checklist.
 

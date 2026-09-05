@@ -109,12 +109,13 @@ fn run() -> Result<()> {
             }
             Ok(())
         }
-        "pcap-over-ip" => {
+        "pcap-over-ip" | "packetcache" => {
             let mode = args.next().context("listen|connect")?;
             let addr = args.next().context("bind/connect address")?;
             let mut out_dir = std::env::temp_dir().join("hostsight-out");
             let mut opts = IngestOptions::default();
             let mut max_packets = Some(10_000u64);
+            let packetcache = cmd == "packetcache";
             while let Some(a) = args.next() {
                 match a.as_str() {
                     "--out" => out_dir = PathBuf::from(args.next().context("--out")?),
@@ -131,12 +132,18 @@ fn run() -> Result<()> {
                 }
             }
             std::fs::create_dir_all(&out_dir)?;
-            let case = match mode.as_str() {
-                "listen" => {
+            let case = match (packetcache, mode.as_str()) {
+                (false, "listen") => {
                     capture::pcap_over_ip::ingest_listen(&addr, &out_dir, &opts, max_packets)?
                 }
-                "connect" => {
+                (false, "connect") => {
                     capture::pcap_over_ip::ingest_connect(&addr, &out_dir, &opts, max_packets)?
+                }
+                (true, "listen") => {
+                    capture::packetcache::ingest_listen(&addr, &out_dir, &opts, max_packets)?
+                }
+                (true, "connect") => {
+                    capture::packetcache::ingest_connect(&addr, &out_dir, &opts, max_packets)?
                 }
                 _ => bail!("mode must be listen or connect"),
             };
@@ -189,6 +196,6 @@ fn apply_decode_as(map: &mut DecodeAsMap, spec: &str) -> Result<()> {
 
 fn print_usage() {
     eprintln!(
-        "HostSight CLI\n\nCommands:\n  parse <file> [--out DIR] [--export-dir DIR] [--export-json FILE] [--cidr CIDRS] [--decode-as tcp/443=HTTPS] [--geo-db FILE] [--asn-db FILE] [--dns-whitelist FILE] [--keywords TEXT] [--no-defang]\n  carve <dump>\n  pcap-over-ip listen|connect <addr> [--out DIR] [--max N]\n  devices\n  write-sample-dbs [DIR]\n"
+        "HostSight CLI\n\nCommands:\n  parse <file>   (pcap|pcapng|etl|dump)\n  carve <dump>\n  pcap-over-ip listen|connect <addr>\n  packetcache listen|connect <addr>  (HSPC magic + PCAP)\n  devices\n  write-sample-dbs [DIR]\n\nCommon flags: --out DIR --export-dir DIR --cidr CIDRS --decode-as tcp/443=HTTPS --no-defang\n"
     );
 }

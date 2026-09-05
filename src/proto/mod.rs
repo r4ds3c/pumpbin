@@ -1,5 +1,6 @@
 //! Protocol parsers.
 
+pub mod chat_ics;
 pub mod dns;
 pub mod ftp;
 pub mod http;

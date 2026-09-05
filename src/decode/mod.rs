@@ -10,7 +10,7 @@ use etherparse::{NetSlice, SlicedPacket, TransportSlice};
 use crate::capture::{self, KeywordPattern};
 use crate::case::Case;
 use crate::fingerprint;
-use crate::proto::{dns, ftp, http, http2, lpr, mail, smb, tftp, tls, voip};
+use crate::proto::{chat_ics, dns, ftp, http, http2, lpr, mail, smb, tftp, tls, voip};
 use crate::reassembly::SessionTracker;
 
 #[derive(Default)]
@@ -139,6 +139,19 @@ fn process_ip_packet(
             note_ports(case, src_ip, sport, dst_ip, dport);
             if !payload.is_empty() {
                 note_pipi(state, src_ip, sport, dst_ip, dport, payload);
+
+                // OpenFlow PACKET_IN (controller port 6653/6633)
+                if matches!(sport, 6633 | 6653) || matches!(dport, 6633 | 6653) {
+                    if let Some(inner) = peel_openflow(payload) {
+                        return process_ip_packet(
+                            case, tracker, state, output_dir, defang, keywords, frame, ts, &inner,
+                        );
+                    }
+                }
+
+                // SOCKS5 CONNECT success may prepend tunneled payload in same segment
+                let payload = peel_socks5_payload(payload).unwrap_or(payload);
+
                 let assembled = tracker.feed_tcp(src_ip, sport, dst_ip, dport, tcp, payload);
                 if let Some(stream) = assembled {
                     http::handle_stream(
@@ -151,7 +164,12 @@ fn process_ip_packet(
                 http2::handle_segment(case, output_dir, defang, payload, src_ip, dst_ip)?;
                 ftp::handle_segment(case, payload, src_ip, dst_ip, sport, dport);
                 mail::handle_segment(case, payload, src_ip, dst_ip, sport, dport);
-                smb::handle_segment(case, payload, src_ip, dst_ip, sport, dport);
+                smb::handle_segment(
+                    case, output_dir, defang, payload, src_ip, dst_ip, sport, dport,
+                )?;
+                chat_ics::handle_segment(
+                    case, output_dir, defang, payload, src_ip, dst_ip, sport, dport,
+                )?;
                 lpr::handle_segment(
                     case, output_dir, defang, payload, src_ip, dst_ip, sport, dport,
                 )?;
@@ -297,10 +315,22 @@ fn peel_gre(payload: &[u8]) -> Option<Vec<u8>> {
             eth.extend_from_slice(inner);
             Some(eth)
         }
-        0x6558 => {
-            // Transparent Ethernet bridging
-            Some(inner.to_vec())
+        // ERSPAN over GRE
+        0x88BE => {
+            if inner.len() > 8 {
+                Some(inner[8..].to_vec())
+            } else {
+                None
+            }
         }
+        0x22EB => {
+            if inner.len() > 12 {
+                Some(inner[12..].to_vec())
+            } else {
+                None
+            }
+        }
+        0x6558 => Some(inner.to_vec()),
         _ => None,
     }
 }
@@ -311,4 +341,58 @@ fn peel_vxlan(payload: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
     Some(payload[8..].to_vec())
+}
+
+/// OpenFlow PACKET_IN (type 10): version(1) type(1) len(2) xid(4) then buffer/total/reason/table/cookie… then Ethernet.
+fn peel_openflow(payload: &[u8]) -> Option<Vec<u8>> {
+    if payload.len() < 16 {
+        return None;
+    }
+    let version = payload[0];
+    let typ = payload[1];
+    if version < 1 || version > 6 || typ != 10 {
+        return None;
+    }
+    let total_len = u16::from_be_bytes([payload[2], payload[3]]) as usize;
+    if total_len > payload.len() || total_len < 24 {
+        return None;
+    }
+    // OF1.0 PACKET_IN: after 8-byte header, buffer_id(4) total_len(2) in_port(2) reason(1) pad(1) = offset 18
+    // OF1.3+: longer; scan for Ethernet dest MAC + EtherType pattern
+    for start in [16usize, 24, 32, 40] {
+        if start + 14 <= payload.len() {
+            let ethertype = u16::from_be_bytes([payload[start + 12], payload[start + 13]]);
+            if matches!(ethertype, 0x0800 | 0x86dd | 0x0806 | 0x8100) {
+                return Some(payload[start..].to_vec());
+            }
+        }
+    }
+    None
+}
+
+/// After SOCKS5 CONNECT success (0x05 0x00 …), remaining bytes are the tunneled stream start.
+fn peel_socks5_payload(payload: &[u8]) -> Option<&[u8]> {
+    // Client greeting: 0x05 nmethods methods…
+    // Server choice: 0x05 method
+    // Request reply success: 05 00 00 atyp …
+    if payload.len() >= 2 && payload[0] == 0x05 && payload[1] == 0x00 {
+        // Could be method selection (len>=2) or reply
+        if payload.len() >= 10 && payload.get(2) == Some(&0x00) {
+            // reply: ver method rsv atyp
+            let atyp = *payload.get(3)?;
+            let skip = match atyp {
+                0x01 => 4 + 4 + 2, // IPv4
+                0x03 => {
+                    let n = *payload.get(4)? as usize;
+                    4 + 1 + n + 2
+                }
+                0x04 => 4 + 16 + 2, // IPv6
+                _ => return None,
+            };
+            if payload.len() > skip {
+                return Some(&payload[skip..]);
+            }
+        }
+    }
+    None
 }

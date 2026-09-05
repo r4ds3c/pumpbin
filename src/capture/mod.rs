@@ -1,7 +1,9 @@
 //! Capture ingest: PCAP / PcapNG / carve / Pcap-over-IP / live.
 
 pub mod carver;
+pub mod etl;
 pub mod live;
+pub mod packetcache;
 pub mod pcap_over_ip;
 
 use std::fs::File;
@@ -47,11 +49,25 @@ pub fn ingest_file(path: &Path, output_dir: &Path, opts: &IngestOptions) -> Resu
 
     match ext.as_str() {
         "pcapng" | "pcap" | "cap" => {}
+        "etl" => {
+            return etl::ingest_etl(path, output_dir, opts);
+        }
         // Memory dumps / unstructured blobs → carver
         "bin" | "dump" | "mem" | "raw" | "img" | "vmem" => {
             return carver::carve_file(path, output_dir, opts);
         }
         _ => {}
+    }
+
+    // Sniff ETL magic even without .etl extension
+    {
+        use std::io::Read;
+        if let Ok(mut f) = File::open(path) {
+            let mut head = [0u8; 16];
+            if f.read(&mut head).unwrap_or(0) >= 8 && etl::looks_like_etl(&head) {
+                return etl::ingest_etl(path, output_dir, opts);
+            }
+        }
     }
 
     let mut case = Case {

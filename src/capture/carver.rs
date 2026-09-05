@@ -126,20 +126,17 @@ fn look_like_ipv4(data: &[u8]) -> Option<usize> {
         return None;
     }
     let ihl = (ver_ihl & 0x0f) as usize * 4;
-    if ihl < 20 {
+    if ihl < 20 || ihl > 60 {
         return None;
     }
     let total = u16::from_be_bytes([data[2], data[3]]) as usize;
-    if total < ihl || total > MAX_FRAME {
+    if total < ihl || total > MAX_FRAME || total > data.len() {
         return None;
     }
-    // Basic sanity: protocol field
+    // Require a known L4 protocol to reduce false positives in dumps
     let proto = data[9];
     if !matches!(proto, 1 | 6 | 17 | 47 | 50 | 51) {
-        // allow common; still accept if total looks ok
-        if total < 20 {
-            return None;
-        }
+        return None;
     }
     Some(total)
 }
@@ -153,7 +150,12 @@ fn look_like_ipv6(data: &[u8]) -> Option<usize> {
     }
     let payload_len = u16::from_be_bytes([data[4], data[5]]) as usize;
     let total = 40 + payload_len;
-    if total > MAX_FRAME || total < 40 {
+    if total < 40 || total > MAX_FRAME || total > data.len() {
+        return None;
+    }
+    // Require a common next-header to cut false positives in dumps
+    let next = data[6];
+    if !matches!(next, 6 | 17 | 58 | 0 | 43 | 44 | 50 | 51) {
         return None;
     }
     Some(total)
