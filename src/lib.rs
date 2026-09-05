@@ -39,7 +39,34 @@ pub enum Message {
     OutputDirDone(Option<PathBuf>),
     OpenOutputFolder,
     ToggleDefang,
+    CycleTimezone,
+    OpenCarveClicked,
+    OpenCarveDone(Option<PathBuf>),
+    PlayVoip(usize),
     NoOp,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TimezoneMode {
+    #[default]
+    Utc,
+    Local,
+}
+
+impl TimezoneMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Utc => "TZ: UTC",
+            Self::Local => "TZ: Local",
+        }
+    }
+
+    pub fn cycle(self) -> Self {
+        match self {
+            Self::Utc => Self::Local,
+            Self::Local => Self::Utc,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -50,6 +77,7 @@ pub struct HostSight {
     pub last_capture_path: Option<PathBuf>,
     pub output_dir: PathBuf,
     pub defang_executables: bool,
+    pub timezone: TimezoneMode,
     pub status: String,
     pub busy: bool,
     pub selected_theme: Theme,
@@ -67,6 +95,7 @@ impl Default for HostSight {
             last_capture_path: None,
             output_dir,
             defang_executables: true,
+            timezone: TimezoneMode::Utc,
             status: "Open a PCAP/PcapNG to begin.".into(),
             busy: false,
             selected_theme: Theme::CatppuccinMacchiato,
@@ -193,6 +222,54 @@ impl HostSight {
                 } else {
                     "Executable defanging: OFF (dangerous)".into()
                 };
+                Task::none()
+            }
+            Message::CycleTimezone => {
+                self.timezone = self.timezone.cycle();
+                self.status = format!("Timezone display: {:?}", self.timezone);
+                Task::none()
+            }
+            Message::OpenCarveClicked => {
+                if self.busy {
+                    return Task::none();
+                }
+                let dialog = AsyncFileDialog::new()
+                    .add_filter("Memory / blob", &["bin", "dump", "mem", "raw", "img", "vmem"])
+                    .add_filter("All", &["*"])
+                    .set_title("Carve packets from dump")
+                    .pick_file();
+                Task::perform(dialog, |handle| {
+                    Message::OpenCarveDone(handle.map(|h| h.path().to_path_buf()))
+                })
+            }
+            Message::OpenCarveDone(Some(path)) => {
+                self.busy = true;
+                self.status = format!("Carving {}…", path.display());
+                self.last_capture_path = Some(path.clone());
+                let output_dir = self.output_dir.clone();
+                let opts = self.ingest_opts();
+                Task::perform(
+                    async move {
+                        std::thread::spawn(move || {
+                            capture::carver::carve_file(&path, &output_dir, &opts)
+                                .map_err(|e| e.to_string())
+                        })
+                        .join()
+                        .unwrap_or_else(|_| Err("carve thread panicked".into()))
+                    },
+                    Message::ParseDone,
+                )
+            }
+            Message::OpenCarveDone(None) => Task::none(),
+            Message::PlayVoip(idx) => {
+                if let Some(call) = self.case.voip_calls.get(idx) {
+                    if let Some(path) = &call.audio_path {
+                        let _ = open::that(path);
+                        self.status = format!("Opened {}", path.display());
+                    } else {
+                        self.status = "No audio extracted for this call.".into();
+                    }
+                }
                 Task::none()
             }
             Message::NoOp => Task::none(),

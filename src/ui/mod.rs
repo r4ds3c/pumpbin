@@ -59,6 +59,7 @@ impl Tab {
 pub fn view(app: &HostSight) -> Element<'_, Message> {
     let toolbar = row![
         button(text("Open capture")).on_press(Message::OpenCaptureClicked),
+        button(text("Carve dump")).on_press(Message::OpenCarveClicked),
         button(text("Reload")).on_press(Message::ReloadCase),
         button(text("Clear")).on_press(Message::ClearCase),
         Space::with_width(12),
@@ -70,6 +71,7 @@ pub fn view(app: &HostSight) -> Element<'_, Message> {
             "Defang: OFF"
         }))
         .on_press(Message::ToggleDefang),
+        button(text(app.timezone.label())).on_press(Message::CycleTimezone),
         Space::with_width(Length::Fill),
         text(if app.busy { "Working…" } else { "Ready" }).size(12),
     ]
@@ -337,15 +339,25 @@ fn anomalies_view(app: &HostSight) -> Element<'_, Message> {
 fn voip_view(app: &HostSight) -> Element<'_, Message> {
     let mut col = Column::new();
     if app.case.voip_calls.is_empty() {
-        col = col.push(text("VoIP extraction lands in Phase 3.").size(13));
+        col = col.push(text("No VoIP calls. SIP/RTP G.711 extracts appear here.").size(13));
     }
-    for v in &app.case.voip_calls {
+    for (i, v) in app.case.voip_calls.iter().enumerate() {
+        let audio = v
+            .audio_path
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "(no audio yet)".into());
         col = col.push(
-            text(format!(
-                "{}  {} → {}  ({})",
-                v.call_id, v.from, v.to, v.codec
-            ))
-            .size(12),
+            row![
+                text(format!(
+                    "{}  {} → {}  ({})  {}",
+                    v.call_id, v.from, v.to, v.codec, audio
+                ))
+                .size(12)
+                .width(Length::Fill),
+                button(text("Play")).on_press(Message::PlayVoip(i))
+            ]
+            .spacing(8),
         );
     }
     panel("VoIP", col)

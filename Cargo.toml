@@ -20,6 +20,11 @@ path = "src/main.rs"
 name = "hostsight-cli"
 path = "src/bin/hostsight_cli.rs"
 
+[features]
+default = []
+# Requires Npcap (Windows) or libpcap (Linux/macOS) at build/link time.
+live-capture = ["dep:pcap"]
+
 [dependencies]
 anyhow = "1.0.86"
 base64 = "0.22"
@@ -28,6 +33,7 @@ dirs = "5.0.1"
 etherparse = "0.16"
 md-5 = "0.10"
 open = "5.1.4"
+pcap = { version = "2", optional = true }
 pcap-file = "2.0.0"
 rfd = { version = "0.14.1", default-features = false, features = ["gtk3"] }
 serde = { version = "1.0.203", features = ["derive"] }

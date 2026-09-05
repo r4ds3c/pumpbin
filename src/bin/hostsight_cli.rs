@@ -25,14 +25,13 @@ fn run() -> Result<()> {
     };
 
     match cmd.as_str() {
-        "parse" => {
-            let capture_path = PathBuf::from(args.next().context(
-                "usage: hostsight-cli parse <capture> [--out DIR] [--export-json FILE] [--no-defang]",
-            )?);
+        "parse" | "carve" => {
+            let capture_path = PathBuf::from(args.next().context("missing capture/dump path")?);
             let mut out_dir = std::env::temp_dir().join("hostsight-out");
             let mut export_json: Option<PathBuf> = None;
             let mut export_hosts: Option<PathBuf> = None;
             let mut opts = IngestOptions::default();
+            let force_carve = cmd == "carve";
 
             while let Some(a) = args.next() {
                 match a.as_str() {
@@ -56,7 +55,11 @@ fn run() -> Result<()> {
             }
 
             std::fs::create_dir_all(&out_dir)?;
-            let case = capture::ingest_file(&capture_path, &out_dir, &opts)?;
+            let case = if force_carve {
+                capture::carver::carve_file(&capture_path, &out_dir, &opts)?
+            } else {
+                capture::ingest_file(&capture_path, &out_dir, &opts)?
+            };
             println!("{}", case.summary());
             if let Some(p) = export_json {
                 export::export_json(&case, &p)?;
@@ -65,6 +68,46 @@ fn run() -> Result<()> {
             if let Some(p) = export_hosts {
                 export::export_hosts_csv(&case, &p)?;
                 println!("wrote {}", p.display());
+            }
+            Ok(())
+        }
+        "pcap-over-ip" => {
+            let mode = args.next().context("listen|connect")?;
+            let addr = args.next().context("bind/connect address")?;
+            let mut out_dir = std::env::temp_dir().join("hostsight-out");
+            let mut opts = IngestOptions::default();
+            let mut max_packets = Some(10_000u64);
+            while let Some(a) = args.next() {
+                match a.as_str() {
+                    "--out" => out_dir = PathBuf::from(args.next().context("--out")?),
+                    "--max" => {
+                        max_packets = Some(
+                            args.next()
+                                .context("--max")?
+                                .parse()
+                                .context("max packets")?,
+                        )
+                    }
+                    "--no-defang" => opts.defang_executables = false,
+                    other => bail!("unknown arg: {other}"),
+                }
+            }
+            std::fs::create_dir_all(&out_dir)?;
+            let case = match mode.as_str() {
+                "listen" => {
+                    capture::pcap_over_ip::ingest_listen(&addr, &out_dir, &opts, max_packets)?
+                }
+                "connect" => {
+                    capture::pcap_over_ip::ingest_connect(&addr, &out_dir, &opts, max_packets)?
+                }
+                _ => bail!("mode must be listen or connect"),
+            };
+            println!("{}", case.summary());
+            Ok(())
+        }
+        "devices" => {
+            for d in capture::live::list_devices()? {
+                println!("{}\t{}", d.name, d.description);
             }
             Ok(())
         }
@@ -81,6 +124,6 @@ fn run() -> Result<()> {
 
 fn print_usage() {
     eprintln!(
-        "HostSight CLI\n\nUsage:\n  hostsight-cli parse <capture.pcap|pcapng> [--out DIR] [--export-json FILE] [--export-hosts-csv FILE] [--keywords TEXT] [--no-defang]\n"
+        "HostSight CLI\n\nCommands:\n  parse <file> [--out DIR] [--export-json FILE] [--keywords TEXT] [--no-defang]\n  carve <dump>  — force Network Packet Carver\n  pcap-over-ip listen|connect <addr> [--out DIR] [--max N]\n  devices       — list live interfaces (needs --features live-capture)\n"
     );
 }

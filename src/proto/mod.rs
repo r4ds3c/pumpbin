@@ -9,3 +9,4 @@ pub mod mail;
 pub mod smb;
 pub mod tftp;
 pub mod tls;
+pub mod voip;

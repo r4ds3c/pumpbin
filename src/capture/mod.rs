@@ -1,4 +1,8 @@
-//! Capture ingest: PCAP / PcapNG file readers (live/ETL/carver later).
+//! Capture ingest: PCAP / PcapNG / carve / Pcap-over-IP / live.
+
+pub mod carver;
+pub mod live;
+pub mod pcap_over_ip;
 
 use std::fs::File;
 use std::io::BufReader;
@@ -35,6 +39,15 @@ pub fn ingest_file(path: &Path, output_dir: &Path, opts: &IngestOptions) -> Resu
         .unwrap_or("")
         .to_ascii_lowercase();
 
+    match ext.as_str() {
+        "pcapng" | "pcap" | "cap" => {}
+        // Memory dumps / unstructured blobs → carver
+        "bin" | "dump" | "mem" | "raw" | "img" | "vmem" => {
+            return carver::carve_file(path, output_dir, opts);
+        }
+        _ => {}
+    }
+
     let mut case = Case {
         source_path: Some(path.to_path_buf()),
         ..Case::default()
@@ -45,7 +58,7 @@ pub fn ingest_file(path: &Path, output_dir: &Path, opts: &IngestOptions) -> Resu
 
     let mut tracker = SessionTracker::new();
     let mut state = DecodeState::new();
-    let keyword_list = parse_keywords(&opts.keywords);
+    let keyword_list = parse_keywords_pub(&opts.keywords);
 
     match ext.as_str() {
         "pcapng" => ingest_pcapng(
@@ -69,10 +82,11 @@ pub fn ingest_file(path: &Path, output_dir: &Path, opts: &IngestOptions) -> Resu
     }
 
     case.sessions = tracker.into_sessions();
+    decode::finalize(&mut case, &mut state, output_dir)?;
     Ok(case)
 }
 
-fn parse_keywords(raw: &str) -> Vec<KeywordPattern> {
+pub fn parse_keywords_pub(raw: &str) -> Vec<KeywordPattern> {
     raw.lines()
         .map(str::trim)
         .filter(|s| !s.is_empty())
@@ -87,7 +101,7 @@ fn parse_keywords(raw: &str) -> Vec<KeywordPattern> {
         .collect()
 }
 
-pub(crate) enum KeywordPattern {
+pub enum KeywordPattern {
     Text(String),
     Hex(String, Vec<u8>),
 }

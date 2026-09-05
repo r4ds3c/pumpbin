@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 — HostSight pivot (Phase 0–2)
+## 0.1.0 — HostSight pivot (Phase 0–3)
 
 ### Phase 0–1
 - Rebranded from PumpBin implant generator to **HostSight** NFAT
@@ -9,8 +9,15 @@
 - `hostsight-cli parse`; Phase 1 fixture test
 
 ### Phase 2
-- TLS handshake metadata: SNI, JA3, JA3S, JA4; X.509 cert extract to files
-- Extractors: FTP, TFTP, SMTP/POP3/IMAP, SMB/SMB2 hints, HTTP/2 DATA, LPR
+- TLS: SNI, JA3, JA3S, JA4; X.509 cert extract
+- FTP, TFTP, SMTP/POP3/IMAP, SMB hints, HTTP/2 DATA, LPR
 - Tunnel decap: VLAN/QinQ, GRE, VXLAN, PPPoE, MPLS
-- UI/CLI toggle for executable defanging (default ON)
-- Golden tests for FTP, TFTP, SMTP, HTTP, TLS
+- Executable defang toggle
+
+### Phase 3
+- Network Packet Carver (memory/blob → frames)
+- Pcap-over-IP listen/connect
+- Live sniff feature flag (`live-capture` + Npcap/libpcap)
+- SIP + RTP G.711 → WAV; VoIP Play opens system player
+- Timezone display toggle (UTC / Local)
+- CLI: `carve`, `pcap-over-ip`, `devices`

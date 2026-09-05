@@ -8,18 +8,20 @@ use etherparse::{NetSlice, SlicedPacket, TransportSlice};
 
 use crate::capture::{self, KeywordPattern};
 use crate::case::Case;
-use crate::proto::{dns, ftp, http, http2, lpr, mail, smb, tftp, tls};
+use crate::proto::{dns, ftp, http, http2, lpr, mail, smb, tftp, tls, voip};
 use crate::reassembly::SessionTracker;
 
 #[derive(Default)]
 pub struct DecodeState {
     pub tftp: tftp::TftpState,
+    pub voip: voip::VoipState,
 }
 
 impl DecodeState {
     pub fn new() -> Self {
         Self {
             tftp: tftp::TftpState::new(),
+            voip: voip::VoipState::new(),
         }
     }
 }
@@ -116,6 +118,9 @@ fn process_ip_packet(
             tftp::handle(
                 case, &mut state.tftp, output_dir, defang, payload, src_ip, dst_ip, sport, dport,
             )?;
+            voip::handle_udp(
+                case, &mut state.voip, output_dir, payload, src_ip, dst_ip, sport, dport,
+            )?;
 
             let session = format!("{src_ip}:{sport} ↔ {dst_ip}:{dport}/UDP");
             capture::match_keywords(case, keywords, payload, frame, &session);
@@ -162,6 +167,11 @@ fn process_ip_packet(
     }
 
     Ok(())
+}
+
+/// Finalize protocol state after all frames (e.g. flush VoIP RTP → WAV).
+pub fn finalize(case: &mut Case, state: &mut DecodeState, output_dir: &Path) -> Result<()> {
+    voip::finalize(case, &mut state.voip, output_dir)
 }
 
 fn note_ports(case: &mut Case, src: IpAddr, sport: u16, dst: IpAddr, dport: u16) {
