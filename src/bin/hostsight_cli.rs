@@ -6,6 +6,7 @@ use std::process::ExitCode;
 use anyhow::{bail, Context, Result};
 use hostsight::capture::{self, IngestOptions};
 use hostsight::export;
+use hostsight::fingerprint::DecodeAsMap;
 
 fn main() -> ExitCode {
     match run() {
@@ -28,6 +29,7 @@ fn run() -> Result<()> {
         "parse" | "carve" => {
             let capture_path = PathBuf::from(args.next().context("missing capture/dump path")?);
             let mut out_dir = std::env::temp_dir().join("hostsight-out");
+            let mut export_dir: Option<PathBuf> = None;
             let mut export_json: Option<PathBuf> = None;
             let mut export_hosts: Option<PathBuf> = None;
             let mut opts = IngestOptions::default();
@@ -36,6 +38,11 @@ fn run() -> Result<()> {
             while let Some(a) = args.next() {
                 match a.as_str() {
                     "--out" => out_dir = PathBuf::from(args.next().context("--out needs path")?),
+                    "--export-dir" => {
+                        export_dir = Some(PathBuf::from(
+                            args.next().context("--export-dir needs path")?,
+                        ))
+                    }
                     "--export-json" => {
                         export_json = Some(PathBuf::from(
                             args.next().context("--export-json needs path")?,
@@ -48,6 +55,26 @@ fn run() -> Result<()> {
                     }
                     "--keywords" => {
                         opts.keywords = args.next().context("--keywords needs string")?;
+                    }
+                    "--cidr" => {
+                        opts.cidr_filter = args.next().context("--cidr needs CIDR list")?;
+                    }
+                    "--decode-as" => {
+                        // format: tcp/443=HTTPS
+                        let spec = args.next().context("--decode-as SPEC")?;
+                        apply_decode_as(&mut opts.decode_as, &spec)?;
+                    }
+                    "--geo-db" => {
+                        opts.enrich.geo_db_path =
+                            Some(PathBuf::from(args.next().context("--geo-db")?));
+                    }
+                    "--asn-db" => {
+                        opts.enrich.asn_db_path =
+                            Some(PathBuf::from(args.next().context("--asn-db")?));
+                    }
+                    "--dns-whitelist" => {
+                        opts.enrich.dns_whitelist_path =
+                            Some(PathBuf::from(args.next().context("--dns-whitelist")?));
                     }
                     "--no-defang" => opts.defang_executables = false,
                     other => bail!("unknown arg: {other}"),
@@ -68,6 +95,17 @@ fn run() -> Result<()> {
             if let Some(p) = export_hosts {
                 export::export_hosts_csv(&case, &p)?;
                 println!("wrote {}", p.display());
+            }
+            if let Some(dir) = export_dir {
+                let m = export::export_all(&case, &dir)?;
+                println!(
+                    "exported all views to {} (hosts={} sessions={} dns={} files={})",
+                    dir.display(),
+                    m.hosts,
+                    m.sessions,
+                    m.dns,
+                    m.files
+                );
             }
             Ok(())
         }
@@ -111,6 +149,12 @@ fn run() -> Result<()> {
             }
             Ok(())
         }
+        "write-sample-dbs" => {
+            let dir = PathBuf::from(args.next().unwrap_or_else(|| "testdata/enrich".into()));
+            hostsight::enrich::write_sample_dbs(&dir)?;
+            println!("wrote sample DBs under {}", dir.display());
+            Ok(())
+        }
         "help" | "-h" | "--help" => {
             print_usage();
             Ok(())
@@ -122,8 +166,29 @@ fn run() -> Result<()> {
     }
 }
 
+fn apply_decode_as(map: &mut DecodeAsMap, spec: &str) -> Result<()> {
+    // tcp/8443=HTTPS or udp/53=DNS
+    let (left, name) = spec
+        .split_once('=')
+        .context("--decode-as expects proto/port=Name")?;
+    let (proto, port_s) = left
+        .split_once('/')
+        .context("--decode-as expects proto/port=Name")?;
+    let port: u16 = port_s.parse()?;
+    match proto.to_ascii_lowercase().as_str() {
+        "tcp" => {
+            map.tcp.insert(port, name.to_string());
+        }
+        "udp" => {
+            map.udp.insert(port, name.to_string());
+        }
+        _ => bail!("proto must be tcp or udp"),
+    }
+    Ok(())
+}
+
 fn print_usage() {
     eprintln!(
-        "HostSight CLI\n\nCommands:\n  parse <file> [--out DIR] [--export-json FILE] [--keywords TEXT] [--no-defang]\n  carve <dump>  — force Network Packet Carver\n  pcap-over-ip listen|connect <addr> [--out DIR] [--max N]\n  devices       — list live interfaces (needs --features live-capture)\n"
+        "HostSight CLI\n\nCommands:\n  parse <file> [--out DIR] [--export-dir DIR] [--export-json FILE] [--cidr CIDRS] [--decode-as tcp/443=HTTPS] [--geo-db FILE] [--asn-db FILE] [--dns-whitelist FILE] [--keywords TEXT] [--no-defang]\n  carve <dump>\n  pcap-over-ip listen|connect <addr> [--out DIR] [--max N]\n  devices\n  write-sample-dbs [DIR]\n"
     );
 }

@@ -1,23 +1,19 @@
 # Changelog
 
-## 0.1.0 — HostSight pivot (Phase 0–3)
+## 0.1.0 — HostSight pivot (Phase 0–4)
 
 ### Phase 0–1
-- Rebranded from PumpBin implant generator to **HostSight** NFAT
-- Removed Maker, Cap’n Proto `.b1n`, Extism, implant examples
-- iced GUI with NetworkMiner-style tabs; PCAP/PcapNG → hosts/sessions/DNS/HTTP
-- `hostsight-cli parse`; Phase 1 fixture test
+- Rebranded from PumpBin to **HostSight** NFAT; removed implant/Maker/Extism
+- PCAP/PcapNG → hosts/sessions/DNS/HTTP; iced tabs; CLI parse
 
 ### Phase 2
-- TLS: SNI, JA3, JA3S, JA4; X.509 cert extract
-- FTP, TFTP, SMTP/POP3/IMAP, SMB hints, HTTP/2 DATA, LPR
-- Tunnel decap: VLAN/QinQ, GRE, VXLAN, PPPoE, MPLS
-- Executable defang toggle
+- TLS SNI/JA3/JA3S/JA4 + certs; FTP/TFTP/mail/SMB/HTTP2/LPR; tunnel decap; defang
 
 ### Phase 3
-- Network Packet Carver (memory/blob → frames)
-- Pcap-over-IP listen/connect
-- Live sniff feature flag (`live-capture` + Npcap/libpcap)
-- SIP + RTP G.711 → WAV; VoIP Play opens system player
-- Timezone display toggle (UTC / Local)
-- CLI: `carve`, `pcap-over-ip`, `devices`
+- Packet carver; Pcap-over-IP; live-capture feature; SIP/RTP→WAV; timezone
+
+### Phase 4
+- Offline GeoIP + ASN (CSV DBs); DNS whitelist; ad/tracker flags
+- PIPI + decode-as; OS guess; host coloring; CIDR filter; browser tracing
+- OSINT URL hooks (VirusTotal links; optional `HOSTSIGHT_OSINT_CMD`)
+- Export CSV / Excel-CSV / XML / CASE / JSON-LD; CLI `--export-dir`

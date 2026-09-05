@@ -57,6 +57,7 @@ pub fn carve_bytes(
     });
     case.sessions = tracker.into_sessions();
     decode::finalize(&mut case, &mut state, output_dir)?;
+    capture::finalize_ingest(&mut case, opts, &state)?;
     Ok(case)
 }
 

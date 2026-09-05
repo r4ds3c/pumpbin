@@ -129,7 +129,7 @@ fn pcap_populates_hosts_sessions_dns_and_http_file() {
         &out_dir,
         &IngestOptions {
             keywords: "hello".into(),
-            defang_executables: true,
+            ..IngestOptions::default()
         },
     )
     .unwrap();

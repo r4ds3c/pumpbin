@@ -20,6 +20,9 @@ use crate::reassembly::SessionTracker;
 pub struct IngestOptions {
     pub keywords: String,
     pub defang_executables: bool,
+    pub enrich: crate::enrich::EnrichConfig,
+    pub decode_as: crate::fingerprint::DecodeAsMap,
+    pub cidr_filter: String,
 }
 
 impl Default for IngestOptions {
@@ -27,6 +30,9 @@ impl Default for IngestOptions {
         Self {
             keywords: String::new(),
             defang_executables: true,
+            enrich: crate::enrich::EnrichConfig::default(),
+            decode_as: crate::fingerprint::DecodeAsMap::builtin(),
+            cidr_filter: String::new(),
         }
     }
 }
@@ -83,7 +89,27 @@ pub fn ingest_file(path: &Path, output_dir: &Path, opts: &IngestOptions) -> Resu
 
     case.sessions = tracker.into_sessions();
     decode::finalize(&mut case, &mut state, output_dir)?;
+    finish_case(&mut case, opts, &state)?;
     Ok(case)
+}
+
+fn finish_case(
+    case: &mut Case,
+    opts: &IngestOptions,
+    state: &DecodeState,
+) -> Result<()> {
+    crate::intel::postprocess(case, &opts.enrich, &opts.decode_as, &state.pipi_hints)?;
+    let cidrs = crate::intel::parse_cidr_list(&opts.cidr_filter)?;
+    crate::intel::apply_cidr_filter(case, &cidrs);
+    Ok(())
+}
+
+pub(crate) fn finalize_ingest(
+    case: &mut Case,
+    opts: &IngestOptions,
+    state: &DecodeState,
+) -> Result<()> {
+    finish_case(case, opts, state)
 }
 
 pub fn parse_keywords_pub(raw: &str) -> Vec<KeywordPattern> {

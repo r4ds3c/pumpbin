@@ -31,6 +31,7 @@ base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 dirs = "5.0.1"
 etherparse = "0.16"
+ipnet = "2"
 md-5 = "0.10"
 open = "5.1.4"
 pcap = { version = "2", optional = true }

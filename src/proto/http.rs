@@ -135,7 +135,12 @@ fn parse_request_only(case: &mut Case, request: &[u8], client: IpAddr, server: I
     let mut lines = head.lines();
     let request_line = lines.next().unwrap_or_default();
     let parts: Vec<_> = request_line.split_whitespace().collect();
+    let method = parts.first().copied().unwrap_or("GET");
     let path = parts.get(1).copied().unwrap_or("/");
+
+    let mut host_hdr = String::new();
+    let mut referer = None;
+    let mut ua = None;
 
     if let Some((_, query)) = path.split_once('?') {
         for pair in query.split('&') {
@@ -156,6 +161,7 @@ fn parse_request_only(case: &mut Case, request: &[u8], client: IpAddr, server: I
             let name = name.trim();
             let value = value.trim();
             if name.eq_ignore_ascii_case("User-Agent") {
+                ua = Some(value.to_string());
                 let host = case.ensure_host(client);
                 if !host.user_agents.iter().any(|u| u == value) {
                     host.user_agents.push(value.to_string());
@@ -201,12 +207,34 @@ fn parse_request_only(case: &mut Case, request: &[u8], client: IpAddr, server: I
                 }
             }
             if name.eq_ignore_ascii_case("Host") {
+                host_hdr = value.to_string();
                 let host = case.ensure_host(server);
                 if !host.hostnames.iter().any(|h| h == value) {
                     host.hostnames.push(value.to_string());
                 }
             }
+            if name.eq_ignore_ascii_case("Referer") || name.eq_ignore_ascii_case("Referrer") {
+                referer = Some(value.to_string());
+            }
         }
+    }
+
+    if !host_hdr.is_empty() || path != "/" {
+        let server_s = server.to_string();
+        let host_for_hop = if host_hdr.is_empty() {
+            server_s.as_str()
+        } else {
+            host_hdr.as_str()
+        };
+        crate::fingerprint::browser::push_hop(
+            case,
+            client,
+            host_for_hop,
+            path,
+            method,
+            referer.as_deref(),
+            ua.as_deref(),
+        );
     }
 
     if request_line.starts_with("POST") && !body.is_empty() {

@@ -153,6 +153,8 @@ impl SessionTracker {
                 packets: s.packets,
                 start_ts: s.start_ts,
                 end_ts: s.end_ts,
+                pipi: None,
+                app_proto: None,
             })
             .collect();
         out.sort_by(|a, b| a.src.cmp(&b.src).then(a.sport.cmp(&b.sport)));

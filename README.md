@@ -8,18 +8,17 @@ HostSight aims for feature parity with capabilities publicly documented for [Net
 
 ## Features (current)
 
-Phase 0–3:
+Phases 0–4 (NetworkMiner Pro–class core):
 
-- Open **PCAP** / **PcapNG**; **carve** memory dumps; **Pcap-over-IP**
-- Host inventory, sessions, DNS, HTTP/HTTP2, FTP, TFTP, mail, SMB hints, LPR
-- TLS: SNI, JA3/JA3S/JA4, certificates (no decryption)
-- VoIP: SIP + RTP G.711 → WAV with Play
-- Tunnel peel: VLAN, GRE, VXLAN, PPPoE, MPLS
-- Defang toggle; timezone UTC/Local; configurable output dir
-- CLI: `parse`, `carve`, `pcap-over-ip`, `devices`
-- Optional live capture: `cargo build --features live-capture` (Npcap/libpcap)
+- Captures: PCAP, PcapNG, carver, Pcap-over-IP; optional live (`--features live-capture`)
+- Extractors: HTTP/2, FTP, TFTP, mail, SMB hints, LPR, TLS metadata, VoIP G.711
+- Intelligence: offline GeoIP/ASN, DNS whitelist, trackers, PIPI, decode-as, OS guess, browser trail
+- UI: host colors, CIDR filter, OSINT buttons, Export all, VoIP Play
+- Exports: CSV, Excel-CSV, XML, CASE, JSON-LD (`hostsight-cli parse … --export-dir DIR`)
 
-Phase 4 next: GeoIP/ASN, PIPI, OSINT, full export suite — see `PROMPTS/networkminer-professional-pivot.md`.
+ETL / OpenFlow / ERSPAN / full SMB file carve and similar stretch items remain incremental.
+
+See `PROMPTS/networkminer-professional-pivot.md` for the full checklist.
 
 ## Safety
 

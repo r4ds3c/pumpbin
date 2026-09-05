@@ -80,6 +80,8 @@ pub fn handle(case: &mut Case, src: IpAddr, dst: IpAddr, payload: &[u8], frame: 
         client,
         server,
         frame,
+        whitelisted: false,
+        is_tracker: false,
     });
 }
 

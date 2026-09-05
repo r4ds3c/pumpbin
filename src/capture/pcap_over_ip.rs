@@ -111,6 +111,7 @@ fn ingest_stream<R: Read>(
 
     case.sessions = tracker.into_sessions();
     crate::decode::finalize(&mut case, &mut state, output_dir)?;
+    crate::capture::finalize_ingest(&mut case, opts, &state)?;
     Ok(case)
 }
 

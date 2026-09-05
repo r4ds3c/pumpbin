@@ -1,5 +1,6 @@
 //! Link / network / transport decode and tunnel decapsulation.
 
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 
@@ -8,6 +9,7 @@ use etherparse::{NetSlice, SlicedPacket, TransportSlice};
 
 use crate::capture::{self, KeywordPattern};
 use crate::case::Case;
+use crate::fingerprint;
 use crate::proto::{dns, ftp, http, http2, lpr, mail, smb, tftp, tls, voip};
 use crate::reassembly::SessionTracker;
 
@@ -15,6 +17,7 @@ use crate::reassembly::SessionTracker;
 pub struct DecodeState {
     pub tftp: tftp::TftpState,
     pub voip: voip::VoipState,
+    pub pipi_hints: HashMap<(IpAddr, u16, IpAddr, u16), String>,
 }
 
 impl DecodeState {
@@ -22,6 +25,7 @@ impl DecodeState {
         Self {
             tftp: tftp::TftpState::new(),
             voip: voip::VoipState::new(),
+            pipi_hints: HashMap::new(),
         }
     }
 }
@@ -102,6 +106,7 @@ fn process_ip_packet(
 
             tracker.observe("UDP", src_ip, sport, dst_ip, dport, payload.len() as u64, ts);
             note_ports(case, src_ip, sport, dst_ip, dport);
+            note_pipi(state, src_ip, sport, dst_ip, dport, payload);
 
             // VXLAN: UDP 4789
             if sport == 4789 || dport == 4789 {
@@ -132,8 +137,8 @@ fn process_ip_packet(
 
             tracker.observe("TCP", src_ip, sport, dst_ip, dport, payload.len() as u64, ts);
             note_ports(case, src_ip, sport, dst_ip, dport);
-
             if !payload.is_empty() {
+                note_pipi(state, src_ip, sport, dst_ip, dport, payload);
                 let assembled = tracker.feed_tcp(src_ip, sport, dst_ip, dport, tcp, payload);
                 if let Some(stream) = assembled {
                     http::handle_stream(
@@ -181,6 +186,22 @@ fn note_ports(case: &mut Case, src: IpAddr, sport: u16, dst: IpAddr, dport: u16)
             host.open_ports.push(port);
             host.open_ports.sort_unstable();
         }
+    }
+}
+
+fn note_pipi(
+    state: &mut DecodeState,
+    src: IpAddr,
+    sport: u16,
+    dst: IpAddr,
+    dport: u16,
+    payload: &[u8],
+) {
+    if let Some(name) = fingerprint::identify_payload(payload) {
+        state
+            .pipi_hints
+            .entry((src, sport, dst, dport))
+            .or_insert_with(|| name.to_string());
     }
 }
 

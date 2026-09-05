@@ -21,6 +21,7 @@ pub struct Case {
     pub images: Vec<ExtractedFile>,
     pub voip_calls: Vec<VoipCall>,
     pub tls_handshakes: Vec<TlsHandshake>,
+    pub browser_traces: Vec<crate::fingerprint::browser::BrowserHop>,
 }
 
 impl Case {
@@ -89,6 +90,10 @@ pub struct Session {
     pub packets: u64,
     pub start_ts: Option<f64>,
     pub end_ts: Option<f64>,
+    /// Port-independent protocol identification.
+    pub pipi: Option<String>,
+    /// Application protocol (PIPI or decode-as).
+    pub app_proto: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,6 +104,8 @@ pub struct DnsRecord {
     pub client: Option<IpAddr>,
     pub server: Option<IpAddr>,
     pub frame: u64,
+    pub whitelisted: bool,
+    pub is_tracker: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

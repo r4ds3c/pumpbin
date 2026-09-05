@@ -10,12 +10,14 @@ pub mod enrich;
 pub mod export;
 pub mod extract;
 pub mod fingerprint;
+pub mod intel;
 pub mod proto;
 pub mod reassembly;
 pub mod style;
 pub mod ui;
 pub mod utils;
 
+use std::net::IpAddr;
 use std::path::PathBuf;
 
 use iced::{Element, Task, Theme};
@@ -23,6 +25,8 @@ use rfd::{AsyncFileDialog, MessageLevel};
 
 use crate::capture::IngestOptions;
 use crate::case::Case;
+use crate::enrich::{lookup_all as osint_lookup_all, OsintKind, OsintQuery};
+use crate::fingerprint::DecodeAsMap;
 use crate::ui::Tab;
 use crate::utils::message_dialog;
 
@@ -43,6 +47,11 @@ pub enum Message {
     OpenCarveClicked,
     OpenCarveDone(Option<PathBuf>),
     PlayVoip(usize),
+    CidrFilterChanged(String),
+    CycleHostColor(IpAddr),
+    ExportAllClicked,
+    OsintFile(usize),
+    OsintDns(usize),
     NoOp,
 }
 
@@ -78,6 +87,7 @@ pub struct HostSight {
     pub output_dir: PathBuf,
     pub defang_executables: bool,
     pub timezone: TimezoneMode,
+    pub cidr_filter: String,
     pub status: String,
     pub busy: bool,
     pub selected_theme: Theme,
@@ -96,6 +106,7 @@ impl Default for HostSight {
             output_dir,
             defang_executables: true,
             timezone: TimezoneMode::Utc,
+            cidr_filter: String::new(),
             status: "Open a PCAP/PcapNG to begin.".into(),
             busy: false,
             selected_theme: Theme::CatppuccinMacchiato,
@@ -108,6 +119,9 @@ impl HostSight {
         IngestOptions {
             keywords: self.keyword_draft.clone(),
             defang_executables: self.defang_executables,
+            enrich: Default::default(),
+            decode_as: DecodeAsMap::builtin(),
+            cidr_filter: self.cidr_filter.clone(),
         }
     }
 
@@ -268,6 +282,76 @@ impl HostSight {
                         self.status = format!("Opened {}", path.display());
                     } else {
                         self.status = "No audio extracted for this call.".into();
+                    }
+                }
+                Task::none()
+            }
+            Message::CidrFilterChanged(s) => {
+                self.cidr_filter = s;
+                Task::none()
+            }
+            Message::CycleHostColor(ip) => {
+                if let Some(host) = self.case.hosts.get_mut(&ip) {
+                    let cur = host.color.as_deref().unwrap_or("");
+                    let idx = crate::intel::HOST_COLORS
+                        .iter()
+                        .position(|c| *c == cur)
+                        .map(|i| i + 1)
+                        .unwrap_or(0);
+                    if idx >= crate::intel::HOST_COLORS.len() {
+                        host.color = None;
+                    } else {
+                        host.color = Some(crate::intel::HOST_COLORS[idx].to_string());
+                    }
+                    self.status = format!(
+                        "Host {ip} color: {}",
+                        host.color.as_deref().unwrap_or("(none)")
+                    );
+                }
+                Task::none()
+            }
+            Message::ExportAllClicked => {
+                let dir = self.output_dir.join("export");
+                match export::export_all(&self.case, &dir) {
+                    Ok(m) => {
+                        self.status = format!(
+                            "Exported to {} (hosts={} files={} dns={})",
+                            dir.display(),
+                            m.hosts,
+                            m.files,
+                            m.dns
+                        );
+                    }
+                    Err(e) => self.status = format!("Export failed: {e}"),
+                }
+                Task::none()
+            }
+            Message::OsintFile(idx) => {
+                if let Some(f) = self.case.files.get(idx) {
+                    let results = osint_lookup_all(&OsintQuery {
+                        kind: OsintKind::Hash,
+                        value: f.sha256.clone(),
+                    });
+                    if let Some(r) = results.first() {
+                        if let Some(url) = &r.url {
+                            let _ = open::that(url);
+                        }
+                        self.status = r.summary.clone();
+                    }
+                }
+                Task::none()
+            }
+            Message::OsintDns(idx) => {
+                if let Some(d) = self.case.dns_records.get(idx) {
+                    let results = osint_lookup_all(&OsintQuery {
+                        kind: OsintKind::Domain,
+                        value: d.query.clone(),
+                    });
+                    if let Some(r) = results.first() {
+                        if let Some(url) = &r.url {
+                            let _ = open::that(url);
+                        }
+                        self.status = r.summary.clone();
                     }
                 }
                 Task::none()

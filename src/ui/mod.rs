@@ -22,10 +22,11 @@ pub enum Tab {
     Keywords,
     Anomalies,
     Voip,
+    Browser,
 }
 
 impl Tab {
-    pub const ALL: [Tab; 11] = [
+    pub const ALL: [Tab; 12] = [
         Tab::Hosts,
         Tab::Files,
         Tab::Images,
@@ -37,6 +38,7 @@ impl Tab {
         Tab::Keywords,
         Tab::Anomalies,
         Tab::Voip,
+        Tab::Browser,
     ];
 
     pub fn label(self) -> &'static str {
@@ -52,6 +54,7 @@ impl Tab {
             Tab::Keywords => "Keywords",
             Tab::Anomalies => "Anomalies",
             Tab::Voip => "VoIP",
+            Tab::Browser => "Browser",
         }
     }
 }
@@ -72,12 +75,22 @@ pub fn view(app: &HostSight) -> Element<'_, Message> {
         }))
         .on_press(Message::ToggleDefang),
         button(text(app.timezone.label())).on_press(Message::CycleTimezone),
+        button(text("Export all")).on_press(Message::ExportAllClicked),
         Space::with_width(Length::Fill),
         text(if app.busy { "Working…" } else { "Ready" }).size(12),
     ]
     .spacing(8)
     .align_y(Vertical::Center)
     .padding(8);
+
+    let filter_row = row![
+        text("CIDR filter:").size(12),
+        text_input("e.g. 10.0.0.0/8 (Reload to apply)", &app.cidr_filter)
+            .on_input(Message::CidrFilterChanged)
+            .width(Length::Fill),
+    ]
+    .spacing(8)
+    .padding([0, 8]);
 
     let tabs = Tab::ALL.iter().fold(Row::new().spacing(4), |row, tab| {
         let label = text(tab.label()).size(12);
@@ -102,13 +115,14 @@ pub fn view(app: &HostSight) -> Element<'_, Message> {
         Tab::Keywords => keywords_view(app),
         Tab::Anomalies => anomalies_view(app),
         Tab::Voip => voip_view(app),
+        Tab::Browser => browser_view(app),
     };
 
     let status = container(text(&app.status).size(12))
         .padding(8)
         .width(Length::Fill);
 
-    column![toolbar, tabs.padding([0, 8]), body, status]
+    column![toolbar, filter_row, tabs.padding([0, 8]), body, status]
         .spacing(4)
         .width(Length::Fill)
         .height(Length::Fill)
@@ -145,8 +159,12 @@ fn hosts_view(app: &HostSight) -> Element<'_, Message> {
             .cloned()
             .collect();
         let line = format!(
-            "{}  ports:{:?}  hostnames:[{}]  UA:[{}]  TLS:[{}]  ↑{} ↓{}",
+            "[{}] {}  {}/{}  OS:{:?}  ports:{:?}  hostnames:[{}]  UA:[{}]  TLS:[{}]  ↑{} ↓{}",
+            host.color.as_deref().unwrap_or("-"),
             host.ip,
+            host.country.as_deref().unwrap_or("?"),
+            host.asn.as_deref().unwrap_or("?"),
+            host.os_guess,
             host.open_ports,
             host.hostnames.join(", "),
             host.user_agents.join(", "),
@@ -154,7 +172,13 @@ fn hosts_view(app: &HostSight) -> Element<'_, Message> {
             host.bytes_sent,
             host.bytes_recv
         );
-        col = col.push(text(line).size(12));
+        col = col.push(
+            row![
+                text(line).size(12).width(Length::Fill),
+                button(text("Color")).on_press(Message::CycleHostColor(host.ip))
+            ]
+            .spacing(8),
+        );
     }
     panel("Hosts", col)
 }
@@ -164,16 +188,21 @@ fn files_view(app: &HostSight) -> Element<'_, Message> {
     if app.case.files.is_empty() {
         col = col.push(text("No extracted files.").size(13));
     }
-    for f in &app.case.files {
+    for (i, f) in app.case.files.iter().enumerate() {
         col = col.push(
-            text(format!(
-                "{}  {} B  {}  sha256:{}…",
-                f.name,
-                f.size,
-                f.protocol,
-                &f.sha256[..16.min(f.sha256.len())]
-            ))
-            .size(12),
+            row![
+                text(format!(
+                    "{}  {} B  {}  sha256:{}…",
+                    f.name,
+                    f.size,
+                    f.protocol,
+                    &f.sha256[..16.min(f.sha256.len())]
+                ))
+                .size(12)
+                .width(Length::Fill),
+                button(text("OSINT")).on_press(Message::OsintFile(i))
+            ]
+            .spacing(8),
         );
     }
     if !app.case.tls_handshakes.is_empty() {
@@ -258,16 +287,27 @@ fn dns_view(app: &HostSight) -> Element<'_, Message> {
     if app.case.dns_records.is_empty() {
         col = col.push(text("No DNS records.").size(13));
     }
-    for d in &app.case.dns_records {
+    for (i, d) in app.case.dns_records.iter().enumerate() {
+        let flags = format!(
+            "{}{}",
+            if d.whitelisted { " WL" } else { "" },
+            if d.is_tracker { " AD" } else { "" }
+        );
         col = col.push(
-            text(format!(
-                "#{}  {} {} → [{}]",
-                d.frame,
-                d.qtype,
-                d.query,
-                d.answers.join(", ")
-            ))
-            .size(12),
+            row![
+                text(format!(
+                    "#{}  {} {} → [{}]{}",
+                    d.frame,
+                    d.qtype,
+                    d.query,
+                    d.answers.join(", "),
+                    flags
+                ))
+                .size(12)
+                .width(Length::Fill),
+                button(text("OSINT")).on_press(Message::OsintDns(i))
+            ]
+            .spacing(8),
         );
     }
     panel("DNS", col)
@@ -281,8 +321,17 @@ fn sessions_view(app: &HostSight) -> Element<'_, Message> {
     for s in &app.case.sessions {
         col = col.push(
             text(format!(
-                "{}  {}:{} ↔ {}:{}  pkts:{}  bytes:{}/{}",
-                s.proto, s.src, s.sport, s.dst, s.dport, s.packets, s.bytes_a_to_b, s.bytes_b_to_a
+                "{} {}/{}  {}:{} ↔ {}:{}  pkts:{}  bytes:{}/{}",
+                s.proto,
+                s.app_proto.as_deref().unwrap_or("-"),
+                s.pipi.as_deref().unwrap_or("-"),
+                s.src,
+                s.sport,
+                s.dst,
+                s.dport,
+                s.packets,
+                s.bytes_a_to_b,
+                s.bytes_b_to_a
             ))
             .size(12),
         );
@@ -334,6 +383,29 @@ fn anomalies_view(app: &HostSight) -> Element<'_, Message> {
         col = col.push(text(format!("[{}] {}", a.kind, a.detail)).size(12));
     }
     panel("Anomalies", col)
+}
+
+fn browser_view(app: &HostSight) -> Element<'_, Message> {
+    let mut col = Column::new();
+    if app.case.browser_traces.is_empty() {
+        col = col.push(text("No browser hops reconstructed from HTTP.").size(13));
+    }
+    for (i, h) in app.case.browser_traces.iter().enumerate() {
+        col = col.push(
+            text(format!(
+                "{}. [{}] {}://{}{}  ref:{:?}  ua:{:?}",
+                i + 1,
+                h.method,
+                "http",
+                h.host,
+                h.path,
+                h.referer,
+                h.user_agent
+            ))
+            .size(12),
+        );
+    }
+    panel("Browser tracing", col)
 }
 
 fn voip_view(app: &HostSight) -> Element<'_, Message> {
