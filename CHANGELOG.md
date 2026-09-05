@@ -32,3 +32,4 @@
 - Status bar with artifact counts + source path
 - Live capture bar: refresh interfaces, select/next iface, Start/Stop, packet & batch counters
 - `ingest_frames` + case merge for continuous live batches
+- Windows `live-capture`: auto-download Npcap SDK libs for linking; runtime still needs Npcap installed

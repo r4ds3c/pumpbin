@@ -1,6 +1,9 @@
 //! Live capture scaffolding (Npcap/Npcap). Enabled with `--features live-capture`.
 
-use anyhow::{bail, Result};
+use anyhow::Result;
+
+#[cfg(not(feature = "live-capture"))]
+use anyhow::bail;
 
 #[derive(Debug, Clone)]
 pub struct CaptureDevice {

@@ -18,6 +18,13 @@ Phases 0–5 + Pro layout:
 - Exports: CSV, Excel-CSV, XML, CASE, JSON-LD (`hostsight-cli parse … --export-dir DIR`)
 
 ```bash
+# Offline parse (no Npcap)
+cargo run --bin hostsight
+
+# Live sniff on Windows: needs Npcap runtime + SDK libs
+# 1) Install https://npcap.com/#download (WinPcap API-compatible mode)
+# 2) SDK is auto-fetched on first live-capture build, or set:
+#    $env:LIBPCAP_LIBDIR = "C:\npcap-sdk\Lib\x64"
 cargo run --bin hostsight --features live-capture
 ```
 
